@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet operations dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #edf0f3;
+    --panel: #ffffff;
+    --ink: #15212c;
+    --muted: #5e6e7e;
+    --line: #d5dbe1;
+    --speed: #0e6a8a;
+    --speed-soft: #d9ecf3;
+    --batch: #a8620f;
+    --batch-soft: #f6e6d0;
+    --ok: #1e7a4c;
+    --bad: #b3261e;
+    --bad-soft: #f8dedb;
+    font-family: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 20px 48px; }
+
+  header.top {
+    display: flex; flex-wrap: wrap; gap: 16px 32px;
+    justify-content: space-between; align-items: flex-end;
+    padding-bottom: 20px; border-bottom: 1px solid var(--line);
+  }
+  h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
+  .sub { margin: 2px 0 0; color: var(--muted); }
+
+  .health { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: flex; flex-direction: column;
+    padding: 8px 12px; min-width: 150px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-left-width: 4px; border-radius: 6px;
+  }
+  .chip .name { font-size: 13px; color: var(--muted); }
+  .chip .val { font-weight: 600; }
+  .chip.ok { border-left-color: var(--ok); }
+  .chip.bad { border-left-color: var(--bad); background: var(--bad-soft); }
+  .chip.ok .val { color: var(--ok); }
+  .chip.bad .val { color: var(--bad); }
+  .chip.unknown { border-left-color: var(--line); }
+
+  #banner {
+    display: none; margin: 16px 0 0; padding: 10px 14px;
+    background: var(--bad-soft); color: var(--bad);
+    border: 1px solid var(--bad); border-radius: 6px; font-weight: 500;
+  }
+  #banner.show { display: block; }
+
+  section.layer {
+    margin-top: 28px; padding: 20px 22px 22px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    border-left-width: 6px;
+  }
+  section.speed { border-left-color: var(--speed); }
+  section.batch { border-left-color: var(--batch); }
+  .layer-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 24px; align-items: baseline; }
+  h2 { margin: 0; font-size: 20px; font-weight: 700; }
+  .layer-note { color: var(--muted); font-size: 14px; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12.5px; font-weight: 600; }
+  .tag.filling { background: var(--speed-soft); color: var(--speed); }
+  .tag.flag { background: var(--batch-soft); color: var(--batch); }
+  .tag.high { background: var(--bad-soft); color: var(--bad); }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 28px; margin-top: 16px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+
+  .zones { width: 100%; border-collapse: collapse; }
+  .zones th, .zones td { padding: 9px 8px 9px 0; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .zones th { font-weight: 500; color: var(--muted); font-size: 13px; }
+  .zones td.zone { font-weight: 600; text-transform: capitalize; }
+  .num { text-align: right !important; padding-right: 0 !important; }
+  .idle-cell { min-width: 150px; }
+  .bar { position: relative; height: 8px; background: var(--speed-soft); border-radius: 4px; overflow: hidden; margin-top: 4px; }
+  .bar > span { display: block; height: 100%; background: var(--speed); }
+  .bar.high > span { background: var(--bad); }
+
+  .chart-title { font-weight: 600; margin: 0 0 2px; }
+  .chart-sub { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  svg.chart text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 12px 40px; margin: 16px 0 6px; }
+  .stat .label { color: var(--muted); font-size: 13px; }
+  .stat .value { font-size: 24px; font-weight: 700; }
+
+  .table-scroll { overflow-x: auto; margin-top: 8px; }
+  table.profit { width: 100%; border-collapse: collapse; min-width: 640px; }
+  table.profit th, table.profit td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: right; }
+  table.profit th:first-child, table.profit td:first-child { text-align: left; padding-left: 0; }
+  table.profit th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  table.profit td.veh { font-weight: 600; }
+  .profit-bar { display: block; height: 4px; margin-top: 4px; background: var(--batch); border-radius: 2px; margin-left: auto; }
+
+  .empty { color: var(--muted); padding: 18px 0 6px; }
+  footer { margin-top: 24px; color: var(--muted); font-size: 13px; }
+
+  .live-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); margin-right: 6px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .live-dot { animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+  }
+  :focus-visible { outline: 3px solid var(--speed); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Fleet operations</h1>
+      <p class="sub"><span class="live-dot" aria-hidden="true"></span><span id="refreshed">Loading…</span></p>
+    </div>
+    <div class="health" id="health" aria-label="Pipeline health">
+      <div class="chip unknown"><span class="name">Zone metrics stream</span><span class="val">Checking…</span></div>
+      <div class="chip unknown"><span class="name">Vehicle earnings stream</span><span class="val">Checking…</span></div>
+      <div class="chip unknown"><span class="name">Daily batch</span><span class="val">Checking…</span></div>
+    </div>
+  </header>
+
+  <div id="banner" role="status"></div>
+
+  <section class="layer speed" aria-labelledby="live-h">
+    <div class="layer-head">
+      <h2 id="live-h">Right now, by zone</h2>
+      <span class="layer-note">Speed layer: refreshed every 5 seconds from one-minute windows</span>
+    </div>
+    <div class="grid">
+      <div>
+        <p class="chart-sub" id="live-window"></p>
+        <table class="zones">
+          <thead>
+            <tr>
+              <th>Zone</th>
+              <th class="idle-cell">Idle share</th>
+              <th class="num">Active</th>
+              <th class="num">Idle</th>
+              <th class="num">Trips</th>
+              <th class="num">Earnings</th>
+            </tr>
+          </thead>
+          <tbody id="zones-body">
+            <tr><td colspan="6" class="empty">Waiting for the first window…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <p class="chart-title">Fleet earnings per minute</p>
+        <p class="chart-sub">All zones, last 30 minutes. The newest bar is still filling.</p>
+        <svg class="chart" id="chart" viewBox="0 0 520 190" role="img" aria-label="Fleet earnings per minute"></svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="layer batch" aria-labelledby="profit-h">
+    <div class="layer-head">
+      <h2 id="profit-h">Daily profitability by vehicle</h2>
+      <span class="layer-note" id="profit-note">Batch layer: one simulated day every 5 minutes</span>
+    </div>
+    <div class="stats" id="profit-stats"></div>
+    <div class="table-scroll">
+      <table class="profit">
+        <thead>
+          <tr>
+            <th>Vehicle</th>
+            <th>Earnings</th>
+            <th>Fuel</th>
+            <th>Maintenance</th>
+            <th>Distance (km)</th>
+            <th>Net profit</th>
+            <th>Service</th>
+          </tr>
+        </thead>
+        <tbody id="profit-body">
+          <tr><td colspan="7" class="empty">No report yet. The first daily batch lands within about 5 minutes of starting the stack.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>Zones with an idle share above 60% are marked for rebalancing. Windows are shown in your local time.</footer>
+</div>
+
+<script>
+  const ZONE_ORDER = ["central", "north", "south", "east", "west"];
+  const HIGH_IDLE = 0.6;
+  const CHART_MINUTES = 30;
+
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmt = (n, d = 2) => Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+  const hhmm = (iso) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  async function getJSON(path) {
+    const r = await fetch(path, { cache: "no-store" });
+    if (!r.ok) throw new Error(path + " returned " + r.status);
+    return r.json();
+  }
+
+  const problems = new Set();
+  function setProblem(key, message) {
+    if (message) problems.add(key + "|" + message);
+    else for (const p of [...problems]) if (p.startsWith(key + "|")) problems.delete(p);
+    const banner = $("#banner");
+    const text = [...problems].map((p) => p.split("|")[1]).join(" ");
+    banner.textContent = text;
+    banner.classList.toggle("show", problems.size > 0);
+  }
+
+  /* ---------- Health ---------- */
+  const STAGE_LABELS = {
+    speed_layer_zone_metrics: "Zone metrics stream",
+    speed_layer_vehicle_earnings: "Vehicle earnings stream",
+    batch_layer: "Daily batch",
+  };
+
+  function ago(seconds) {
+    if (seconds == null) return "never";
+    if (seconds < 90) return Math.round(seconds) + " s ago";
+    return Math.round(seconds / 60) + " min ago";
+  }
+
+  function renderHealth(h) {
+    $("#health").innerHTML = h.checks.map((c) => {
+      const ok = c.status === "ok";
+      const label = STAGE_LABELS[c.stage] || c.stage;
+      const val = ok ? "Receiving data, " + ago(c.seconds_since_seen)
+                     : c.status === "missing" ? "Has not reported yet"
+                     : "No data for " + ago(c.seconds_since_seen).replace(" ago", "");
+      return '<div class="chip ' + (ok ? "ok" : "bad") + '"><span class="name">' + esc(label) +
+             '</span><span class="val">' + esc(val) + "</span></div>";
+    }).join("");
+  }
+
+  /* ---------- Live zones ---------- */
+  function renderLive(data) {
+    const rows = data.metrics || [];
+    if (!rows.length) return;
+    const latestStart = rows.reduce((m, r) => (r.window_start > m ? r.window_start : m), rows[0].window_start);
+    const latest = rows.filter((r) => r.window_start === latestStart);
+    const filling = Date.now() < new Date(latest[0].window_end).getTime() + 30000;
+    latest.sort((a, b) => ZONE_ORDER.indexOf(a.zone) - ZONE_ORDER.indexOf(b.zone));
+
+    $("#live-window").innerHTML = "Window " + esc(hhmm(latest[0].window_start)) + " to " + esc(hhmm(latest[0].window_end)) +
+      (filling ? ' <span class="tag filling">still filling</span>' : "");
+
+    $("#zones-body").innerHTML = latest.map((r) => {
+      const high = r.idle_ratio > HIGH_IDLE;
+      const pct = Math.round(Math.min(r.idle_ratio, 1) * 100);
+      return "<tr>" +
+        '<td class="zone">' + esc(r.zone) + "</td>" +
+        '<td class="idle-cell">' + pct + "%" + (high ? ' <span class="tag high">rebalance</span>' : "") +
+          '<div class="bar' + (high ? " high" : "") + '"><span style="width:' + pct + '%"></span></div></td>' +
+        '<td class="num">' + esc(r.active_vehicles) + "</td>" +
+        '<td class="num">' + esc(r.idle_vehicles) + "</td>" +
+        '<td class="num">' + esc(r.trips_started) + "</td>" +
+        '<td class="num">' + fmt(r.total_earnings) + "</td></tr>";
+    }).join("");
+
+    renderChart(rows, latestStart);
+  }
+
+  function renderChart(rows, latestStart) {
+    const totals = new Map();
+    for (const r of rows) totals.set(r.window_start, (totals.get(r.window_start) || 0) + Number(r.total_earnings));
+    const latestMs = new Date(latestStart).getTime();
+    const minutes = [];
+    for (let i = CHART_MINUTES - 1; i >= 0; i--) {
+      const ms = latestMs - i * 60000;
+      const key = [...totals.keys()].find((k) => new Date(k).getTime() === ms);
+      minutes.push({ ms, value: key ? totals.get(key) : null });
+    }
+    const max = Math.max(1, ...minutes.map((m) => m.value || 0));
+    const W = 520, H = 190, left = 44, right = 8, top = 10, bottom = 26;
+    const plotW = W - left - right, plotH = H - top - bottom;
+    const slot = plotW / minutes.length, bw = Math.max(2, slot - 3);
+
+    let svg = "";
+    for (const frac of [0, 0.5, 1]) {
+      const y = top + plotH * (1 - frac);
+      svg += '<line x1="' + left + '" x2="' + (W - right) + '" y1="' + y + '" y2="' + y + '" stroke="#d5dbe1" stroke-width="1"/>';
+      svg += '<text x="' + (left - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + Math.round(max * frac).toLocaleString() + "</text>";
+    }
+    minutes.forEach((m, i) => {
+      if (m.value == null) return;
+      const h = (m.value / max) * plotH;
+      const x = left + i * slot + (slot - bw) / 2;
+      const isLatest = i === minutes.length - 1;
+      svg += '<rect x="' + x + '" y="' + (top + plotH - h) + '" width="' + bw + '" height="' + h + '" fill="#0e6a8a"' +
+             (isLatest ? ' opacity="0.45"' : "") + "><title>" + esc(hhmm(new Date(m.ms).toISOString())) + ": " + fmt(m.value) + "</title></rect>";
+    });
+    const label = (i, anchor) => '<text x="' + (left + i * slot + slot / 2) + '" y="' + (H - 8) + '" text-anchor="' + anchor + '">' +
+      esc(hhmm(new Date(minutes[i].ms).toISOString())) + "</text>";
+    svg += label(0, "start") + label(Math.floor(minutes.length / 2), "middle") + label(minutes.length - 1, "end");
+    $("#chart").innerHTML = svg;
+  }
+
+  /* ---------- Profitability ---------- */
+  function renderProfit(data) {
+    const rows = data.report || [];
+    if (!rows.length) return;
+    const totalNet = rows.reduce((s, r) => s + Number(r.net_profit), 0);
+    const totalEarn = rows.reduce((s, r) => s + Number(r.total_earnings), 0);
+    const flagged = rows.filter((r) => r.service_flag).length;
+    const maxNet = Math.max(1, ...rows.map((r) => Number(r.net_profit)));
+
+    $("#profit-note").textContent = "Report for " + rows[0].report_date + ", built from " + rows[0].source_file;
+    $("#profit-stats").innerHTML =
+      '<div class="stat"><div class="label">Fleet net profit</div><div class="value">' + fmt(totalNet) + "</div></div>" +
+      '<div class="stat"><div class="label">Fleet earnings</div><div class="value">' + fmt(totalEarn) + "</div></div>" +
+      '<div class="stat"><div class="label">Vehicles reported</div><div class="value">' + rows.length + "</div></div>" +
+      '<div class="stat"><div class="label">Due for service</div><div class="value">' + flagged + "</div></div>";
+
+    $("#profit-body").innerHTML = rows.map((r) => {
+      const w = Math.max(2, (Number(r.net_profit) / maxNet) * 100);
+      return "<tr>" +
+        '<td class="veh">' + esc(r.vehicle_id) + "</td>" +
+        "<td>" + fmt(r.total_earnings) + "</td>" +
+        "<td>" + fmt(r.fuel_cost) + "</td>" +
+        "<td>" + fmt(r.maintenance_cost) + "</td>" +
+        "<td>" + fmt(r.distance_covered_km, 1) + "</td>" +
+        "<td>" + fmt(r.net_profit) + '<span class="profit-bar" style="width:' + w + '%"></span></td>' +
+        "<td>" + (r.service_flag ? '<span class="tag flag">Service due</span>' : "OK") + "</td></tr>";
+    }).join("");
+  }
+
+  /* ---------- Polling ---------- */
+  async function refreshFast() {
+    try {
+      renderLive(await getJSON("/fleet/live"));
+      setProblem("live", "");
+    } catch (e) {
+      setProblem("live", "Can't load live zone data. Check that serving-api is running (docker compose ps).");
+    }
+    try {
+      renderHealth(await getJSON("/health"));
+      setProblem("health", "");
+    } catch (e) {
+      setProblem("health", "Can't load pipeline health.");
+    }
+    $("#refreshed").textContent = "Updated " + new Date().toLocaleTimeString();
+  }
+
+  async function refreshSlow() {
+    try {
+      renderProfit(await getJSON("/fleet/profitability"));
+      setProblem("profit", "");
+    } catch (e) {
+      setProblem("profit", "Can't load the daily profitability report.");
+    }
+  }
+
+  refreshFast();
+  refreshSlow();
+  setInterval(refreshFast, 5000);
+  setInterval(refreshSlow, 15000);
+</script>
+</body>
+</html>
